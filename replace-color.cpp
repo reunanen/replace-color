@@ -67,6 +67,9 @@ int main(int argc, char** argv)
 
         std::cout << "Found " << files.size() << " files, now converting ..." << std::endl;
 
+        size_t total_converted_pixel_count = 0;
+        size_t converted_file_count = 0;
+
         for (const auto& file : files) {
 
             const std::string& full_name = file.full_name();
@@ -103,12 +106,18 @@ int main(int argc, char** argv)
                     std::cout << ": converted " << std::dec << converted_pixel_count << " pixels";
                     if (converted_pixel_count > 0) {
                         cv::imwrite(full_name, image);
+
+                        total_converted_pixel_count += converted_pixel_count;
+                        converted_file_count += 1;
                     }
                 }
             }
 
             std::cout << std::endl;
         }
+
+        std::cout << std::endl << "Converted a total of " << total_converted_pixel_count << " pixels in " << converted_file_count << " files" << std::endl;
+
         return 0;
     }
     catch (std::exception& e) {
