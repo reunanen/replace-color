@@ -2,6 +2,22 @@
 #include <opencv2/imgcodecs/imgcodecs.hpp>
 #include "cxxopts/include/cxxopts.hpp"
 
+const auto numeric_to_color = [](unsigned long numeric) {
+    cv::Vec4b color;
+    color[0] = (numeric >> 8)  & 0xff; // blue
+    color[1] = (numeric >> 16) & 0xff; // green
+    color[2] = (numeric >> 24) & 0xff; // red
+    color[3] = (numeric >> 0)  & 0xff; // alpha
+    return color;
+};
+
+const auto color_to_numeric = [](const cv::Vec4b& color) {
+    return (static_cast<unsigned long>(color[0]) << 8)  // blue
+         | (static_cast<unsigned long>(color[1]) << 16) // green
+         | (static_cast<unsigned long>(color[2]) << 24) // red
+         |  static_cast<unsigned long>(color[3]);       // alpha
+};
+
 int main(int argc, char** argv)
 {
     if (argc == 1) {
@@ -17,6 +33,7 @@ int main(int argc, char** argv)
         ("s,filename-suffix", "How the input file names should end", cxxopts::value<std::string>())
         ("f,from-color", "Which RGBA color to change; for example, try 0xffff00ff for yellow", cxxopts::value<std::string>())
         ("t,to-color", "Which RGBA color to change to; for example, try 0xffff0080 for yellow with alpha", cxxopts::value<std::string>())
+        ("c,show-colors", "Show colors actually found?")
         ;
 
     try {
@@ -28,21 +45,16 @@ int main(int argc, char** argv)
         const std::string filename_suffix   = options["filename-suffix"].as<std::string>();
         const std::string from_color_string = options["from-color"]     .as<std::string>();
         const std::string to_color_string   = options["to-color"]       .as<std::string>();        
+        const bool show_colors              = options.count("show-colors") > 0;
 
         unsigned long from_color_numeric = std::stoul(from_color_string, nullptr, 16);
         unsigned long to_color_numeric   = std::stoul(to_color_string, nullptr, 16);
 
-        const auto numeric_to_color = [](unsigned long numeric) {
-            cv::Vec4b color;
-            color[0] = (numeric >> 8) & 0xff; // blue
-            color[1] = (numeric >> 16) & 0xff; // green
-            color[2] = (numeric >> 24) & 0xff; // red
-            color[3] = (numeric >> 0) & 0xff; // alpha
-            return color;
-        };
-
         const cv::Vec4b from_color = numeric_to_color(from_color_numeric);
         const cv::Vec4b to_color = numeric_to_color(to_color_numeric);
+
+        assert(from_color_numeric == color_to_numeric(from_color));
+        assert(to_color_numeric == color_to_numeric(to_color));
 
         const auto color_to_string = [](const cv::Vec4b& color) {
             std::ostringstream oss;
@@ -82,7 +94,7 @@ int main(int argc, char** argv)
                 std::cout << " - unable to read, skipping...";
             }
             else {
-                std::cout
+                std::cout << std::dec
                     << ", width = " << image.cols
                     << ", height = " << image.rows
                     << ", channels = " << image.channels()
@@ -92,6 +104,12 @@ int main(int argc, char** argv)
                     std::cout << " - need 4 channels, skipping...";
                 }
                 else {
+                    struct compare_color {
+                        bool operator() (const cv::Vec4b& a, const cv::Vec4b &b) const {
+                            return color_to_numeric(a) < color_to_numeric(b);
+                        }
+                    };
+                    std::set<cv::Vec4b, compare_color> colors_found;
                     size_t converted_pixel_count = 0;
                     for (int y = 0; y < image.rows; ++y) {
                         cv::Vec4b* row = image.ptr<cv::Vec4b>(y);
@@ -101,6 +119,9 @@ int main(int argc, char** argv)
                                 color = to_color;
                                 ++converted_pixel_count;
                             }
+                            if (show_colors) {
+                                colors_found.insert(color);
+                            }
                         }
                     }
                     std::cout << ": converted " << std::dec << converted_pixel_count << " pixels";
@@ -109,6 +130,15 @@ int main(int argc, char** argv)
 
                         total_converted_pixel_count += converted_pixel_count;
                         converted_file_count += 1;
+                    }
+                    if (show_colors) {
+                        std::cout << ", colors found:";
+                        for (const auto& color : colors_found) {
+                            if (color != *colors_found.begin()) {
+                                std::cout << ",";
+                            }
+                            std::cout << " " << color_to_string(color);
+                        }
                     }
                 }
             }
